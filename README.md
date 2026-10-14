@@ -29,7 +29,7 @@ Your password never leaves your machine and is never stored. The login script pr
 a token that the server uses instead.
 
 ```bash
-pipx install git+https://github.com/<you>/garmin-mcp   # or: pip install -e .
+pipx install git+https://github.com/alyssindewonderland/garmin_mcp   # or: pip install -e .
 garmin-mcp-login                 # asks for email, password and MFA code
 garmin-mcp-login --save ~/.garmin-tokens   # also keep a copy for local use
 ```
