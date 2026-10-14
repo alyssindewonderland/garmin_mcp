@@ -65,3 +65,17 @@ def test_store_selection(tmp_path):
     assert isinstance(default_store(Settings(token_dir=tmp_path)), FileTokenStore)
     s = Settings(redis_url="https://x.upstash.io", redis_token="t")
     assert isinstance(default_store(s), UpstashTokenStore)
+
+
+def test_redis_env_names(monkeypatch):
+    for k in list(__import__("os").environ):
+        if "REST_API" in k or "UPSTASH" in k:
+            monkeypatch.delenv(k)
+    monkeypatch.setenv("STORAGE_KV_REST_API_URL", "https://p.upstash.io")
+    monkeypatch.setenv("STORAGE_KV_REST_API_TOKEN", "pt")
+    s = Settings.from_env()
+    assert (s.redis_url, s.redis_token) == ("https://p.upstash.io", "pt")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://u.upstash.io")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "ut")
+    s = Settings.from_env()
+    assert (s.redis_url, s.redis_token) == ("https://u.upstash.io", "ut")

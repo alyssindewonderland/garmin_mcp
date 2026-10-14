@@ -19,6 +19,21 @@ def _list(name: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _redis_env(kind: str) -> str | None:
+    """Upstash REST URL/TOKEN under any of the names Vercel or Upstash use.
+
+    Vercel's Upstash integration lets you pick a prefix (e.g. STORAGE_KV_REST_API_URL),
+    so any variable ending in the standard names is accepted.
+    """
+    for name in (f"UPSTASH_REDIS_REST_{kind}", f"KV_REST_API_{kind}"):
+        if os.getenv(name):
+            return os.getenv(name)
+    for name, value in sorted(os.environ.items()):
+        if value and name.endswith((f"_UPSTASH_REDIS_REST_{kind}", f"_KV_REST_API_{kind}")):
+            return value
+    return None
+
+
 @dataclass(frozen=True)
 class Settings:
     # Garmin auth. GARMIN_TOKENS (inline JSON from `garmin-mcp-login`) is preferred;
@@ -53,10 +68,8 @@ class Settings:
             garmin_password=os.getenv("GARMIN_PASSWORD") or None,
             garmin_is_cn=_bool("GARMIN_IS_CN"),
             token_dir=Path(os.getenv("GARMIN_TOKEN_DIR", str(Path.home() / ".garmin-tokens"))),
-            redis_url=os.getenv("UPSTASH_REDIS_REST_URL") or os.getenv("KV_REST_API_URL") or None,
-            redis_token=os.getenv("UPSTASH_REDIS_REST_TOKEN")
-            or os.getenv("KV_REST_API_TOKEN")
-            or None,
+            redis_url=_redis_env("URL"),
+            redis_token=_redis_env("TOKEN"),
             allow_writes=_bool("GARMIN_ALLOW_WRITES"),
             cache_ttl_seconds=int(os.getenv("GARMIN_CACHE_TTL", "300")),
             host=os.getenv("HOST", "0.0.0.0"),
