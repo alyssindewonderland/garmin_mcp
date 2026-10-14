@@ -28,7 +28,7 @@ class SecretGuard:
         return hmac.compare_digest(candidate.encode(), self.secret)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != "http":  # lifespan
             await self.app(scope, receive, send)
             return
         path: str = scope["path"]
@@ -60,7 +60,39 @@ async def _respond(send: Send, status: int, body: bytes) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-def build_http_app(server: MCPServer, settings: Settings) -> ASGIApp:
+class PerRequestApp:
+    """Serverless mode: build the MCP app and run its session manager per request.
+
+    Serverless runtimes (e.g. Vercel) don't reliably run ASGI lifespan events, and
+    the SDK's session manager needs one. In stateless mode nothing is shared between
+    requests anyway, so a fresh manager per request costs little.
+    """
+
+    def __init__(self, server: MCPServer, **app_kwargs):
+        self.server = server
+        self.app_kwargs = app_kwargs
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            await _ack_lifespan(receive, send)
+            return
+        app = self.server.streamable_http_app(**self.app_kwargs)
+        manager = self.server.session_manager
+        async with manager.run():
+            await app(scope, receive, send)
+
+
+async def _ack_lifespan(receive: Receive, send: Send) -> None:
+    while True:
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            await send({"type": "lifespan.shutdown.complete"})
+            return
+
+
+def build_http_app(server: MCPServer, settings: Settings, serverless: bool = False) -> ASGIApp:
     if not settings.auth_secret or len(settings.auth_secret) < MIN_SECRET_LENGTH:
         raise SystemExit(
             f"MCP_AUTH_SECRET must be set to a random string of at least {MIN_SECRET_LENGTH} "
@@ -73,11 +105,12 @@ def build_http_app(server: MCPServer, settings: Settings) -> ASGIApp:
             allowed_hosts=settings.allowed_hosts,
             allowed_origins=[f"https://{h}" for h in settings.allowed_hosts] + ["https://claude.ai"],
         )
-    app = server.streamable_http_app(
-        streamable_http_path=MCP_PATH,
-        stateless_http=True,
-        json_response=True,
-        transport_security=security,
-        host=settings.host,
-    )
+    app_kwargs = {
+        "streamable_http_path": MCP_PATH,
+        "stateless_http": True,
+        "json_response": True,
+        "transport_security": security,
+        "host": settings.host,
+    }
+    app = PerRequestApp(server, **app_kwargs) if serverless else server.streamable_http_app(**app_kwargs)
     return SecretGuard(app, settings.auth_secret)

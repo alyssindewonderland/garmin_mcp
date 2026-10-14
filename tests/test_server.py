@@ -106,10 +106,10 @@ def test_tokens_persisted_and_preferred(tmp_path):
     call(server, "get_hrv", {"day": "2026-10-01"})
     api = FakeGarmin.instances[-1]
     assert api.login_tokenstore == '{"di_token": "x"}'
-    assert api.client.dumped_to == [str(tmp_path)]
+    saved = (tmp_path / "garmin_tokens.json").read_text()
+    assert saved == api.client.blob
     # Once a refreshed token file exists, it wins over the env secret.
-    (tmp_path / "garmin_tokens.json").write_text("{}")
-    assert service._token_source() == str(tmp_path)
+    assert service._token_source() == saved
 
 
 def test_unconfigured_gives_setup_hint(tmp_path):

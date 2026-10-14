@@ -65,16 +65,23 @@ The server runs streamable HTTP at `/mcp`, protected by a random secret
 (`MCP_AUTH_SECRET`). Clients either call `https://<host>/mcp/<secret>` or send
 `Authorization: Bearer <secret>`. Everything else gets a 404.
 
-### Fly.io via GitHub Actions (no CLI needed)
+### Vercel (recommended, free Hobby plan)
 
-1. Create a Fly.io account and a deploy token (fly.io dashboard → Tokens → create an org token).
-2. In the GitHub repo → Settings → Secrets and variables → Actions, add secrets:
-   `FLY_API_TOKEN`, `GARMIN_TOKENS` (from `garmin-mcp-login`) and `MCP_AUTH_SECRET`
-   (any random 32+ character string, e.g. `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`).
-3. Run the **Deploy to Fly.io** workflow (Actions tab). It creates the app and volume on
-   first run and prints the URL. Every push to `main` redeploys.
+1. In Vercel: **Add New → Project**, import this GitHub repo, keep the defaults, and deploy.
+2. In the project: **Storage → Create Database → Upstash for Redis** (free tier) and
+   connect it to the project. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`, where
+   the server keeps refreshed Garmin tokens (Garmin rotates them, and Vercel has no disk).
+3. In **Settings → Environment Variables** add:
+   - `GARMIN_TOKENS`: the output of `garmin-mcp-login`
+   - `MCP_AUTH_SECRET`: a random string of 32+ characters
+     (`python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`)
+   - optionally `GARMIN_ALLOW_WRITES=true`
+4. Redeploy (Deployments → ⋯ → Redeploy) so the variables take effect. Every push to
+   `main` deploys automatically after that.
 
-### Fly.io from your terminal
+Your server is at `https://<project>.vercel.app/mcp/<MCP_AUTH_SECRET>`.
+
+### Fly.io
 
 ```bash
 fly launch --no-deploy --copy-config      # pick a unique app name, keep fly.toml
@@ -115,6 +122,7 @@ claude mcp add --transport http garmin https://<host>/mcp --header "Authorizatio
 |---|---|---|
 | `GARMIN_TOKENS` | | Token JSON from `garmin-mcp-login` |
 | `GARMIN_TOKEN_DIR` | `~/.garmin-tokens` | Where refreshed tokens are kept (use a volume) |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | | Upstash Redis for refreshed tokens instead of disk (also `UPSTASH_REDIS_REST_URL`/`_TOKEN`) |
 | `GARMIN_EMAIL`, `GARMIN_PASSWORD` | | Fallback login; fails if your account has MFA |
 | `GARMIN_IS_CN` | `false` | Use garmin.cn |
 | `GARMIN_ALLOW_WRITES` | `false` | Enable write tools |

@@ -48,3 +48,32 @@ def test_short_secret_refused(tmp_path):
     settings = Settings(auth_secret="short", token_dir=tmp_path)
     with pytest.raises(SystemExit):
         build_http_app(build_server(settings), settings)
+
+
+def test_serverless_mode_without_lifespan(tmp_path):
+    settings = Settings(auth_secret=SECRET, token_dir=tmp_path)
+    app = build_http_app(build_server(settings), settings, serverless=True)
+    c = TestClient(app)  # no `with`: lifespan never runs, like on Vercel
+    for _ in range(2):
+        r = c.post(f"/mcp/{SECRET}", json=INIT, headers=HEADERS)
+        assert r.status_code == 200, r.text
+    r = c.post(
+        f"/mcp/{SECRET}",
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        headers={**HEADERS, "mcp-protocol-version": "2025-06-18"},
+    )
+    assert r.status_code == 200 and "get_sleep" in r.text, r.text
+
+
+def test_vercel_entrypoint(monkeypatch, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    monkeypatch.setenv("MCP_AUTH_SECRET", SECRET)
+    monkeypatch.setenv("GARMIN_TOKEN_DIR", str(tmp_path))
+    path = Path(__file__).parent.parent / "api" / "index.py"
+    spec = importlib.util.spec_from_file_location("vercel_index", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    r = TestClient(module.app).post(f"/mcp/{SECRET}", json=INIT, headers=HEADERS)
+    assert r.status_code == 200, r.text

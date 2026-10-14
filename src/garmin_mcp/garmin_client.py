@@ -11,7 +11,6 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from garminconnect import (
@@ -23,11 +22,9 @@ from garminconnect import (
 from mcp.server.mcpserver.exceptions import ToolError
 
 from .config import Settings
+from .token_store import FileTokenStore, TokenStore, UpstashTokenStore
 
 log = logging.getLogger(__name__)
-
-TOKEN_FILENAME = "garmin_tokens.json"
-
 
 class GarminError(ToolError):
     """An error that is safe to show to the model and the user."""
@@ -66,8 +63,14 @@ class TTLCache:
 
 
 class GarminService:
-    def __init__(self, settings: Settings, api_factory: Callable[..., Garmin] = Garmin):
+    def __init__(
+        self,
+        settings: Settings,
+        api_factory: Callable[..., Garmin] = Garmin,
+        store: TokenStore | None = None,
+    ):
         self.settings = settings
+        self.store = store or default_store(settings)
         self._api_factory = api_factory
         self._api: Garmin | None = None
         self._lock = threading.RLock()
@@ -76,14 +79,16 @@ class GarminService:
 
     # -- auth -----------------------------------------------------------------
 
-    @property
-    def token_path(self) -> Path:
-        return self.settings.token_dir / TOKEN_FILENAME
-
     def _token_source(self) -> str | None:
         """Prefer tokens refreshed by a previous run over the (older) env secret."""
-        if self.token_path.is_file():
-            return str(self.settings.token_dir)
+        try:
+            saved = self.store.load()
+        except Exception as e:  # noqa: BLE001 - fall back to the env secret
+            log.warning("Could not read saved Garmin tokens: %s", type(e).__name__)
+            saved = None
+        if saved and saved.strip().startswith("{"):
+            self._last_persisted = saved
+            return saved
         return self.settings.garmin_tokens
 
     def _login(self) -> Garmin:
@@ -125,7 +130,7 @@ class GarminService:
         if blob == self._last_persisted:
             return
         try:
-            self._api.client.dump(str(self.settings.token_dir))
+            self.store.save(blob)
             self._last_persisted = blob
         except Exception as e:  # noqa: BLE001
             log.warning("Could not persist refreshed Garmin tokens: %s", type(e).__name__)
@@ -178,3 +183,9 @@ class GarminService:
         result = self.call(method, *args, cache=False, **kwargs)
         self.cache.clear()
         return result
+
+
+def default_store(settings: Settings) -> TokenStore:
+    if settings.redis_url and settings.redis_token:
+        return UpstashTokenStore(settings.redis_url, settings.redis_token)
+    return FileTokenStore(settings.token_dir)

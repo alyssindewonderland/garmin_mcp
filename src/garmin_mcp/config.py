@@ -30,6 +30,10 @@ class Settings:
     # Where refreshed tokens are persisted (mount a volume here in production).
     token_dir: Path = field(default_factory=lambda: Path.home() / ".garmin-tokens")
 
+    # Upstash Redis REST credentials (Vercel's Upstash integration sets the KV_* names).
+    redis_url: str | None = None
+    redis_token: str | None = None
+
     allow_writes: bool = False
     cache_ttl_seconds: int = 300
 
@@ -49,6 +53,10 @@ class Settings:
             garmin_password=os.getenv("GARMIN_PASSWORD") or None,
             garmin_is_cn=_bool("GARMIN_IS_CN"),
             token_dir=Path(os.getenv("GARMIN_TOKEN_DIR", str(Path.home() / ".garmin-tokens"))),
+            redis_url=os.getenv("UPSTASH_REDIS_REST_URL") or os.getenv("KV_REST_API_URL") or None,
+            redis_token=os.getenv("UPSTASH_REDIS_REST_TOKEN")
+            or os.getenv("KV_REST_API_TOKEN")
+            or None,
             allow_writes=_bool("GARMIN_ALLOW_WRITES"),
             cache_ttl_seconds=int(os.getenv("GARMIN_CACHE_TTL", "300")),
             host=os.getenv("HOST", "0.0.0.0"),
