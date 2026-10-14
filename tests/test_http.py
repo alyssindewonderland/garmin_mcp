@@ -77,3 +77,16 @@ def test_vercel_entrypoint(monkeypatch, tmp_path):
     spec.loader.exec_module(module)
     r = TestClient(module.app).post(f"/mcp/{SECRET}", json=INIT, headers=HEADERS)
     assert r.status_code == 200, r.text
+
+
+def test_vercel_entrypoint_reports_config_error(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+
+    monkeypatch.delenv("MCP_AUTH_SECRET", raising=False)
+    path = Path(__file__).parent.parent / "api" / "index.py"
+    spec = importlib.util.spec_from_file_location("vercel_index_err", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    r = TestClient(module.app).get("/healthz")
+    assert r.status_code == 500 and "MCP_AUTH_SECRET" in r.text

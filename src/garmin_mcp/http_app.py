@@ -49,6 +49,19 @@ class SecretGuard:
         await _respond(send, 404, b"not found")
 
 
+def config_error_app(message: str) -> ASGIApp:
+    """An app that answers every request with a setup error (no secrets in it)."""
+    body = f"garmin-mcp is not configured correctly: {message}\n".encode()
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            await _ack_lifespan(receive, send)
+        elif scope["type"] == "http":
+            await _respond(send, 500, body)
+
+    return app
+
+
 async def _respond(send: Send, status: int, body: bytes) -> None:
     await send(
         {
