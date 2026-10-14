@@ -63,7 +63,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
-            garmin_tokens=os.getenv("GARMIN_TOKENS") or None,
+            garmin_tokens=(os.getenv("GARMIN_TOKENS") or "").strip() or None,
             garmin_email=os.getenv("GARMIN_EMAIL") or None,
             garmin_password=os.getenv("GARMIN_PASSWORD") or None,
             garmin_is_cn=_bool("GARMIN_IS_CN"),
@@ -74,6 +74,6 @@ class Settings:
             cache_ttl_seconds=int(os.getenv("GARMIN_CACHE_TTL", "300")),
             host=os.getenv("HOST", "0.0.0.0"),
             port=int(os.getenv("PORT", "8000")),
-            auth_secret=os.getenv("MCP_AUTH_SECRET") or None,
+            auth_secret=(os.getenv("MCP_AUTH_SECRET") or "").strip().strip("\"'") or None,
             allowed_hosts=_list("MCP_ALLOWED_HOSTS"),
         )

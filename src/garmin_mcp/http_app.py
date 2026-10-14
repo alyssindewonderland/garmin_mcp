@@ -8,12 +8,15 @@ with `Authorization: Bearer <secret>`.
 from __future__ import annotations
 
 import hmac
+import logging
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import Settings
+
+log = logging.getLogger(__name__)
 
 MCP_PATH = "/mcp"
 MIN_SECRET_LENGTH = 24
@@ -50,7 +53,12 @@ class SecretGuard:
             if auth.lower().startswith("bearer ") and self._ok(auth[7:].strip()):
                 await self.app(scope, receive, send)
                 return
-        # Don't reveal whether the endpoint exists.
+        # Don't reveal whether the endpoint exists, but log enough to debug setup
+        # (never the secret itself).
+        if path.startswith(MCP_PATH):
+            log.warning(
+                "Rejected %s %s... (secret mismatch or missing)", scope.get("method"), path[:8]
+            )
         await _respond(send, 404, b"not found")
 
 

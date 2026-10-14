@@ -95,3 +95,15 @@ def test_vercel_entrypoint_reports_config_error(monkeypatch):
 def test_root_says_running(client):
     r = client.get("/")
     assert r.status_code == 200 and "running" in r.text
+
+
+def test_oauth_discovery_paths_are_404(client):
+    for p in ("/.well-known/oauth-protected-resource",
+              f"/.well-known/oauth-protected-resource/mcp/{SECRET}",
+              "/.well-known/oauth-authorization-server", "/register"):
+        assert client.get(p).status_code == 404
+
+
+def test_secret_env_is_trimmed(monkeypatch):
+    monkeypatch.setenv("MCP_AUTH_SECRET", f'  "{SECRET}"\n')
+    assert Settings.from_env().auth_secret == SECRET
