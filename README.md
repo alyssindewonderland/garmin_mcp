@@ -65,7 +65,16 @@ The server runs streamable HTTP at `/mcp`, protected by a random secret
 (`MCP_AUTH_SECRET`). Clients either call `https://<host>/mcp/<secret>` or send
 `Authorization: Bearer <secret>`. Everything else gets a 404.
 
-### Fly.io
+### Fly.io via GitHub Actions (no CLI needed)
+
+1. Create a Fly.io account and a deploy token (fly.io dashboard → Tokens → create an org token).
+2. In the GitHub repo → Settings → Secrets and variables → Actions, add secrets:
+   `FLY_API_TOKEN`, `GARMIN_TOKENS` (from `garmin-mcp-login`) and `MCP_AUTH_SECRET`
+   (any random 32+ character string, e.g. `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`).
+3. Run the **Deploy to Fly.io** workflow (Actions tab). It creates the app and volume on
+   first run and prints the URL. Every push to `main` redeploys.
+
+### Fly.io from your terminal
 
 ```bash
 fly launch --no-deploy --copy-config      # pick a unique app name, keep fly.toml

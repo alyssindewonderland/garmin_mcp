@@ -1,0 +1,57 @@
+name: Deploy to Fly.io
+
+# Needs these GitHub repo secrets: FLY_API_TOKEN, GARMIN_TOKENS, MCP_AUTH_SECRET.
+# Optional repo variables: FLY_APP (default garmin-mcp-<owner>), FLY_REGION (default fra),
+# GARMIN_ALLOW_WRITES (default false).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP: ${{ vars.FLY_APP || format('garmin-mcp-{0}', github.repository_owner) }}
+      REGION: ${{ vars.FLY_REGION || 'fra' }}
+    steps:
+      - name: Skip until Fly is configured
+        id: gate
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN secret not set; skipping deploy." >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.gate.outputs.skip != 'true'
+      - name: Create app and volume if missing
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          APP=$(echo "$APP" | tr '[:upper:]_' '[:lower:]-')
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          flyctl status --app "$APP" >/dev/null 2>&1 || flyctl apps create "$APP"
+          if ! flyctl volumes list --app "$APP" | grep -q garmin_data; then
+            flyctl volumes create garmin_data --app "$APP" --region "$REGION" --size 1 --yes
+          fi
+      - name: Set secrets
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          MCP_AUTH_SECRET: ${{ secrets.MCP_AUTH_SECRET }}
+          ALLOW_WRITES: ${{ vars.GARMIN_ALLOW_WRITES || 'false' }}
+        run: |
+          flyctl secrets set --stage --app "$APP" \
+            GARMIN_TOKENS="$GARMIN_TOKENS" \
+            MCP_AUTH_SECRET="$MCP_AUTH_SECRET" \
+            MCP_ALLOWED_HOSTS="$APP.fly.dev" \
+            GARMIN_ALLOW_WRITES="$ALLOW_WRITES"
+      - name: Deploy
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          flyctl deploy --app "$APP" --primary-region "$REGION" --remote-only --ha=false
+          echo "Deployed: https://$APP.fly.dev (connector URL: https://$APP.fly.dev/mcp/<MCP_AUTH_SECRET>)" >> "$GITHUB_STEP_SUMMARY"
