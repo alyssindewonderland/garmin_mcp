@@ -21,3 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t garmin-mcp .
+  vercel-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build exactly as Vercel does
+        run: |
+          mkdir -p .vercel
+          echo '{"projectId":"ci","orgId":"ci","settings":{"framework":null}}' > .vercel/project.json
+          npx -y vercel@latest build --yes
