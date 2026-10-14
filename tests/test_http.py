@@ -90,3 +90,8 @@ def test_vercel_entrypoint_reports_config_error(monkeypatch):
     spec.loader.exec_module(module)
     r = TestClient(module.app).get("/healthz")
     assert r.status_code == 500 and "MCP_AUTH_SECRET" in r.text
+
+
+def test_root_says_running(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "running" in r.text

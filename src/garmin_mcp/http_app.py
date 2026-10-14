@@ -35,6 +35,11 @@ class SecretGuard:
         if path == "/healthz":
             await _respond(send, 200, b"ok")
             return
+        if path == "/":
+            await _respond(
+                send, 200, b"garmin-mcp is running. Claude connects at /mcp/<MCP_AUTH_SECRET>.\n"
+            )
+            return
         prefix = MCP_PATH + "/"
         if path.startswith(prefix) and self._ok(path[len(prefix):].rstrip("/")):
             scope = dict(scope, path=MCP_PATH, raw_path=MCP_PATH.encode())
