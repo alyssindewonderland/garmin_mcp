@@ -43,3 +43,43 @@ def test_rejects_bad_spec():
     with pytest.raises(WorkoutSpecError):
         build_workout({"name": "x", "steps": [{"duration_s": 60, "target": {"type": "pace",
                                                                             "min_per_km": "4:00"}}]})
+
+
+def test_strength_sets_and_roundtrip():
+    from garmin_mcp.workouts import describe_workout
+
+    spec = {
+        "name": "Push day",
+        "sport": "strength_training",
+        "steps": [
+            {"repeat": 3, "steps": [
+                {"type": "interval", "reps": 8,
+                 "exercise": {"category": "bench_press", "name": "barbell_bench_press"},
+                 "weight_kg": 60},
+                {"type": "rest", "duration_s": 90},
+            ]},
+        ],
+    }
+    w = build_workout(spec)
+    work = w["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"][0]
+    assert work["endCondition"]["conditionTypeKey"] == "reps"
+    assert work["category"] == "BENCH_PRESS" and work["exerciseName"] == "BARBELL_BENCH_PRESS"
+    assert work["weightValue"] == 60000.0
+    back = describe_workout(w)
+    assert back["sport"] == "strength_training"
+    assert back["steps"][0]["repeat"] == 3
+    assert back["steps"][0]["steps"][0] == {
+        "type": "interval", "reps": 8,
+        "exercise": {"category": "BENCH_PRESS", "name": "BARBELL_BENCH_PRESS"}, "weight_kg": 60.0,
+    }
+
+
+def test_pace_target_roundtrip_and_walking_sport():
+    from garmin_mcp.workouts import describe_workout
+
+    w = build_workout({"name": "walk", "sport": "walking", "steps": [
+        {"type": "interval", "duration_s": 600,
+         "target": {"type": "pace", "min_per_km": ["9:00", "10:00"]}}]})
+    assert w["sportType"] == {"sportTypeId": 17, "sportTypeKey": "walking"}
+    step = describe_workout(w)["steps"][0]
+    assert step["target"] == {"type": "pace", "min_per_km": ["10:00", "9:00"]}

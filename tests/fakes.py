@@ -123,6 +123,26 @@ class FakeGarmin:
         return {"workoutId": 999, "workoutName": payload["workoutName"],
                 "sportType": payload["sportType"]}
 
+    def get_activity_details(self, activity_id, maxchart=2000, maxpoly=4000):
+        self._rec("get_activity_details", activity_id, maxchart, maxpoly)
+        return {
+            "metricDescriptors": [{"metricsIndex": 0, "key": "sumElapsedDuration"},
+                                  {"metricsIndex": 1, "key": "directHeartRate"}],
+            "activityDetailMetrics": [{"metrics": [float(t), 140]} for t in range(100)],
+        }
+
+    def get_workout_by_id(self, workout_id):
+        self._rec("get_workout_by_id", workout_id)
+        return {"workoutId": workout_id, "workoutName": "Easy",
+                "sportType": {"sportTypeId": 1, "sportTypeKey": "running"},
+                "workoutSegments": [{"workoutSteps": [
+                    {"type": "ExecutableStepDTO", "stepType": {"stepTypeKey": "interval"},
+                     "endCondition": {"conditionTypeKey": "time"}, "endConditionValue": 1800.0,
+                     "targetType": {"workoutTargetTypeKey": "heart.rate.zone"}, "zoneNumber": 2}]}]}
+
+    def update_workout(self, workout_id, payload):
+        self._rec("update_workout", workout_id, payload)
+
     def schedule_workout(self, workout_id, date_str):
         self._rec("schedule_workout", workout_id, date_str)
         return {"workoutScheduleId": 555}

@@ -16,9 +16,9 @@ Garmin calls live in `garmin_client.py` so that route can be added later.
 |---|---|
 | Profile | `get_profile` |
 | Daily health | `get_daily_summary`, `get_sleep`, `get_hrv`, `get_body_battery`, `get_stress`, `get_heart_rate`, `get_body_composition`, `get_health_range` (multi-day table) |
-| Training | `get_training_readiness`, `get_training_status`, `get_race_predictions`, `get_personal_records`, `list_activities`, `get_recent_activities`, `get_activity` |
-| Workouts | `list_workouts`, `get_scheduled_workouts` |
-| Writes (off unless `GARMIN_ALLOW_WRITES=true`) | `create_workout`, `schedule_workout`, `unschedule_workout`, `delete_workout`, `update_activity`, `add_weigh_in` |
+| Training | `get_training_readiness`, `get_training_status`, `get_race_predictions`, `get_personal_records`, `list_activities`, `get_recent_activities`, `get_activity`, `get_activity_timeseries` (per-second charts, downsampled) |
+| Workouts | `list_workouts`, `get_workout`, `get_scheduled_workouts` |
+| Writes (off unless `GARMIN_ALLOW_WRITES=true`) | `create_workout` (run/bike/swim/walk/strength), `update_workout`, `schedule_workout`, `unschedule_workout`, `delete_workout`, `update_activity`, `add_weigh_in` |
 | Prompts | `morning_check`, `weekly_review` |
 
 Responses are trimmed summaries; every read tool accepts `raw=true` for Garmin's full JSON.

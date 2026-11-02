@@ -13,7 +13,8 @@ from pydantic import Field
 from . import summarize as S
 from .config import Settings
 from .garmin_client import GarminError, GarminService
-from .workouts import WorkoutSpecError, build_workout
+from .timeseries import MAX_POINTS, build_timeseries
+from .workouts import WorkoutSpecError, build_workout, describe_workout
 
 INSTRUCTIONS = """\
 Tools for the user's own Garmin Connect account: daily health (sleep, HRV, stress,
@@ -266,7 +267,45 @@ def build_server(settings: Settings | None = None, service: GarminService | None
             }
         return out
 
+    @mcp.tool(annotations=READ)
+    async def get_activity_timeseries(
+        activity_id: int,
+        metrics: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "Channels to return. Default: hr_bpm, speed_kmh, pace_min_per_km, power_w, "
+                    "cadence_spm/cadence_rpm, elevation_m, distance_km (whichever exist). Also "
+                    "available when recorded: gap_speed_kmh, temp_c, respiration_brpm, stride_m, "
+                    "ground_contact_ms, vertical_osc_cm, vertical_ratio_pct, "
+                    "performance_condition, lat, lon."
+                )
+            ),
+        ] = None,
+        max_points: Annotated[
+            int,
+            Field(ge=10, le=MAX_POINTS, description="Upper bound on returned points; data is "
+                  "averaged into equal time buckets to fit"),
+        ] = 600,
+        start_s: Annotated[float | None, Field(description="Window start, seconds from activity start")] = None,
+        end_s: Annotated[float | None, Field(description="Window end, seconds from activity start")] = None,
+    ) -> dict[str, Any]:
+        """Second-by-second data for an activity (the charts in Garmin Connect), downsampled.
+
+        Returns columns aligned with t_s (seconds from start). For full 1-second detail,
+        narrow the window with start_s/end_s, e.g. a single interval, rather than raising
+        max_points over a whole long activity.
+        """
+        details = await call("get_activity_details", activity_id, 100000, 0)
+        return build_timeseries(details, metrics, max_points, start_s, end_s)
+
     # -- workouts --------------------------------------------------------------
+
+    @mcp.tool(annotations=READ)
+    async def get_workout(workout_id: int, raw: Raw = False) -> dict[str, Any]:
+        """A saved workout's full structure, in the same shape create_workout accepts."""
+        data = await call("get_workout_by_id", workout_id)
+        return S.raw(data) if raw else describe_workout(data or {})
 
     @mcp.tool(annotations=READ)
     async def list_workouts(limit: Annotated[int, Field(ge=1, le=100)] = 30) -> dict[str, Any]:
@@ -304,7 +343,10 @@ def build_server(settings: Settings | None = None, service: GarminService | None
                     "{repeat: N, steps: [...]}. Targets: {type: hr_zone, zone}, {type: hr, "
                     "bpm: [lo, hi]}, {type: power_zone, zone}, {type: power, watts: [lo, hi]}, "
                     "{type: pace, min_per_km: ['4:50', '5:10']}, {type: speed, kmh: [lo, hi]}, "
-                    "{type: cadence, rpm: [lo, hi]}."
+                    "{type: cadence, rpm: [lo, hi]}. Strength steps: {type: interval, reps: 10, "
+                    "exercise: {category: 'BENCH_PRESS', name: 'BARBELL_BENCH_PRESS'}, "
+                    "weight_kg: 60} followed by {type: rest, duration_s: 90}; wrap in "
+                    "{repeat: sets, steps: [...]} for multiple sets."
                 )
             ),
         ],
@@ -327,6 +369,20 @@ def build_server(settings: Settings | None = None, service: GarminService | None
                 "scheduled_workout_id": (sched or {}).get("workoutScheduleId"),
             }
         return result
+
+    @mcp.tool(annotations=WRITE)
+    async def update_workout(
+        workout_id: int,
+        spec: Annotated[dict[str, Any], Field(description="Complete new workout, same shape as "
+                                              "create_workout (get_workout returns it)")],
+    ) -> dict[str, Any]:
+        """Replace a saved workout's name, description and steps. Calendar entries stay."""
+        try:
+            payload = build_workout(spec)
+        except WorkoutSpecError as e:
+            raise GarminError(f"Invalid workout: {e}") from e
+        await write("update_workout", workout_id, payload)
+        return {"updated": workout_id, "name": payload["workoutName"]}
 
     @mcp.tool(annotations=WRITE)
     async def schedule_workout(workout_id: int, day: DateStr = None) -> dict[str, Any]:

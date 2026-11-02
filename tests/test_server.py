@@ -123,3 +123,21 @@ def test_bad_date(tmp_path):
     server, _ = make(tmp_path)
     with pytest.raises(Exception, match="YYYY-MM-DD"):
         call(server, "get_sleep", {"day": "10/01/2026"})
+
+
+def test_activity_timeseries_tool(tmp_path):
+    server, _ = make(tmp_path)
+    out = call(server, "get_activity_timeseries", {"activity_id": 5, "max_points": 10})
+    assert out["available"] and out["points"] <= 11 and out["hr_bpm"][0] == 140
+    api = FakeGarmin.instances[-1]
+    assert ("get_activity_details", 5, 100000, 0) in api.calls
+
+
+def test_get_and_update_workout(tmp_path):
+    server, _ = make(tmp_path, allow_writes=True)
+    w = call(server, "get_workout", {"workout_id": 7})
+    assert w["steps"] == [{"type": "interval", "duration_s": 1800.0,
+                           "target": {"type": "hr_zone", "zone": 2}}]
+    w["name"] = "Easier"
+    out = call(server, "update_workout", {"workout_id": 7, "spec": w})
+    assert out == {"updated": 7, "name": "Easier"}

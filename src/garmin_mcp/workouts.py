@@ -32,8 +32,8 @@ SPORTS = {
     "pilates": 8,
     "hiit": 9,
     "mobility": 11,
-    "walking": 3,  # Garmin files walking under "other" for structured workouts
-    "hiking": 3,
+    "walking": 17,
+    "hiking": 18,
 }
 
 STEP_TYPES = {
@@ -46,7 +46,10 @@ STEP_TYPES = {
     "other": 7,
 }
 
-CONDITIONS = {"lap.button": 1, "time": 2, "distance": 3, "iterations": 7}
+CONDITIONS = {"lap.button": 1, "time": 2, "distance": 3, "iterations": 7, "reps": 10}
+
+# Garmin stores strength weights in grams, tagged with the kilogram unit.
+WEIGHT_UNIT_KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 
 TARGETS = {
     "no.target": 1,
@@ -126,6 +129,11 @@ def _end_condition(step: dict[str, Any]) -> tuple[dict[str, Any], float | None, 
     if "duration_s" in step:
         secs = float(step["duration_s"])
         return cond("time"), secs, secs
+    if "reps" in step:
+        reps = int(step["reps"])
+        if reps < 1:
+            raise WorkoutSpecError("reps must be >= 1")
+        return cond("reps"), float(reps), reps * 4.0
     if "distance_m" in step:
         meters = float(step["distance_m"])
         return cond("distance"), meters, meters / 3.0  # rough estimate at ~5:30/km
@@ -186,6 +194,15 @@ class _Builder:
             out["childStepId"] = child_id
         if spec.get("note"):
             out["description"] = str(spec["note"])[:250]
+        exercise = spec.get("exercise")
+        if exercise:
+            if isinstance(exercise, str):
+                exercise = {"category": exercise}
+            out["category"] = str(exercise.get("category", "")).upper()
+            out["exerciseName"] = str(exercise.get("name", "")).upper()
+        if spec.get("weight_kg") is not None:
+            out["weightValue"] = float(spec["weight_kg"]) * 1000.0
+            out["weightUnit"] = dict(WEIGHT_UNIT_KILOGRAM)
         return out
 
 
@@ -196,7 +213,7 @@ def build_workout(spec: dict[str, Any]) -> dict[str, Any]:
     sport = spec.get("sport", "running")
     if sport not in SPORTS:
         raise WorkoutSpecError(f"sport must be one of {sorted(SPORTS)}")
-    sport_type = {"sportTypeId": SPORTS[sport], "sportTypeKey": sport if SPORTS[sport] != 3 else "other"}
+    sport_type = {"sportTypeId": SPORTS[sport], "sportTypeKey": sport}
     b = _Builder()
     steps = b.steps(spec.get("steps") or [])
     workout = {
@@ -208,3 +225,80 @@ def build_workout(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("description"):
         workout["description"] = str(spec["description"])[:1000]
     return workout
+
+
+# -- reading workouts back into the spec shape --------------------------------
+
+_TARGET_BACK = {
+    "heart.rate.zone": ("hr_zone", "hr", "bpm"),
+    "power.zone": ("power_zone", "power", "watts"),
+}
+
+
+def _pace(speed: float) -> str:
+    secs = round(1000 / speed)
+    return f"{secs // 60}:{secs % 60:02d}"
+
+
+def _target_back(step: dict[str, Any]) -> dict[str, Any] | None:
+    key = (step.get("targetType") or {}).get("workoutTargetTypeKey")
+    one, two, zone = step.get("targetValueOne"), step.get("targetValueTwo"), step.get("zoneNumber")
+    if not key or key == "no.target":
+        return None
+    if key in _TARGET_BACK:
+        zone_type, range_type, unit = _TARGET_BACK[key]
+        if zone:
+            return {"type": zone_type, "zone": zone}
+        return {"type": range_type, unit: [one, two]}
+    if key == "pace.zone" and one and two:
+        return {"type": "pace", "min_per_km": [_pace(one), _pace(two)]}
+    if key == "speed.zone" and one and two:
+        return {"type": "speed", "kmh": [round(one * 3.6, 1), round(two * 3.6, 1)]}
+    if key == "cadence":
+        return {"type": "cadence", "rpm": [one, two]}
+    return {"type": key, "values": [one, two], "zone": zone}
+
+
+def _step_back(step: dict[str, Any]) -> dict[str, Any]:
+    if step.get("type") == "RepeatGroupDTO":
+        return {
+            "repeat": int(step.get("numberOfIterations") or 1),
+            "steps": [_step_back(s) for s in step.get("workoutSteps") or []],
+        }
+    out: dict[str, Any] = {"type": (step.get("stepType") or {}).get("stepTypeKey", "other")}
+    cond = (step.get("endCondition") or {}).get("conditionTypeKey")
+    value = step.get("endConditionValue")
+    if cond == "time":
+        out["duration_s"] = value
+    elif cond == "distance":
+        out["distance_m"] = value
+    elif cond == "reps":
+        out["reps"] = int(value or 0)
+    else:
+        out["lap_button"] = True
+    target = _target_back(step)
+    if target:
+        out["target"] = target
+    if step.get("category"):
+        out["exercise"] = {"category": step["category"], "name": step.get("exerciseName") or ""}
+    if step.get("weightValue"):
+        out["weight_kg"] = round(step["weightValue"] / 1000.0, 2)
+    if step.get("description"):
+        out["note"] = step["description"]
+    return out
+
+
+def describe_workout(w: dict[str, Any]) -> dict[str, Any]:
+    """Garmin workout JSON -> the same spec shape `build_workout` accepts."""
+    steps = []
+    for segment in w.get("workoutSegments") or []:
+        steps.extend(_step_back(s) for s in segment.get("workoutSteps") or [])
+    spec = {
+        "id": w.get("workoutId"),
+        "name": w.get("workoutName"),
+        "sport": (w.get("sportType") or {}).get("sportTypeKey"),
+        "description": w.get("description"),
+        "estimated_duration_min": round((w.get("estimatedDurationInSecs") or 0) / 60, 1),
+        "steps": steps,
+    }
+    return {k: v for k, v in spec.items() if v not in (None, "", [])}
