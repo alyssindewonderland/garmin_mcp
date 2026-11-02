@@ -13,7 +13,7 @@ from pydantic import Field
 from . import summarize as S
 from .config import Settings
 from .garmin_client import GarminError, GarminService
-from .timeseries import MAX_POINTS, build_timeseries
+from .timeseries import DEFAULT_METRICS, MAX_POINTS, build_timeseries
 from .workouts import WorkoutSpecError, build_workout, describe_workout
 
 INSTRUCTIONS = """\
@@ -297,6 +297,11 @@ def build_server(settings: Settings | None = None, service: GarminService | None
         max_points over a whole long activity.
         """
         details = await call("get_activity_details", activity_id, 100000, 0)
+        if metrics is None:
+            # Pace only makes sense on foot; drop it for rides, swims and the rest.
+            summary = S.activity(await call("get_activity", activity_id) or {})
+            if "avg_pace_min_per_km" not in summary:
+                metrics = [m for m in DEFAULT_METRICS if m != "pace_min_per_km"]
         return build_timeseries(details, metrics, max_points, start_s, end_s)
 
     # -- workouts --------------------------------------------------------------

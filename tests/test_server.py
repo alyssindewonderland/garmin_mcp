@@ -129,6 +129,7 @@ def test_activity_timeseries_tool(tmp_path):
     server, _ = make(tmp_path)
     out = call(server, "get_activity_timeseries", {"activity_id": 5, "max_points": 10})
     assert out["available"] and out["points"] <= 11 and out["hr_bpm"][0] == 140
+    assert "pace_min_per_km" not in out  # a ride
     api = FakeGarmin.instances[-1]
     assert ("get_activity_details", 5, 100000, 0) in api.calls
 

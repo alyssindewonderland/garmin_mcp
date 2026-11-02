@@ -131,6 +131,11 @@ class FakeGarmin:
             "activityDetailMetrics": [{"metrics": [float(t), 140]} for t in range(100)],
         }
 
+    def get_activity(self, activity_id):
+        self._rec("get_activity", activity_id)
+        return {"activityId": activity_id, "activityTypeDTO": {"typeKey": "virtual_ride"},
+                "summaryDTO": {"averageSpeed": 8.0}}
+
     def get_workout_by_id(self, workout_id):
         self._rec("get_workout_by_id", workout_id)
         return {"workoutId": workout_id, "workoutName": "Easy",
